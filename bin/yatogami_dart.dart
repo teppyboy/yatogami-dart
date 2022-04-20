@@ -21,28 +21,38 @@ Future<List<IUser>> getUsersFromMessage(ICommandContext context) async {
     if (userId == null) {
       continue;
     }
-    users.add(await context.client.fetchUser(Snowflake(userId)));
+    try {
+      users.add(await context.client.fetchUser(Snowflake(userId)));
+    } catch (err) {
+      print(err);
+      continue;
+    }
   }
   return Future<List<IUser>>.value(users);
 }
 
-List<Future<IMember>>? getMembersFromMessage(ICommandContext context) {
+Future<List<IMember>> getMembersFromMessage(ICommandContext context) async {
   final guild = context.guild;
+  final members = List<IMember>.empty(growable: true);
   if (guild == null) {
-    return null;
+    return members;
   }
   final args = context.getArguments();
   if (args.isEmpty) {
-    return List<Future<IMember>>.unmodifiable([context.member]);
+    return Future<List<IMember>>.value([context.member!]);
   }
-  final members = List<Future<IMember>>.empty(growable: true);
   for (final arg in args) {
     var userId = int.tryParse(arg);
     userId ??= int.tryParse(arg.substring(2, arg.length - 1));
     if (userId == null) {
       continue;
     }
-    members.add(guild.fetchMember(Snowflake(userId)));
+    try {
+      members.add(await guild.fetchMember(Snowflake(userId)));
+    } catch (err) {
+      print(err);
+      continue;
+    }
   }
   return members;
 }
