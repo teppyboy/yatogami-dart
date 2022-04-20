@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io';
 import "dart:async";
 import 'package:nyxx/nyxx.dart';
 import 'package:nyxx_commander/nyxx_commander.dart';
@@ -87,6 +87,24 @@ void _ping(ICommandContext context, String message) {
   context.reply(MessageBuilder.content("Pong!"), reply: true, mention: false);
 }
 
+Future<void> startServer(INyxxWebsocket bot) async {
+  final port = int.parse(Platform.environment['HTTP_PORT'] ?? '8080');
+
+  HttpServer.bind(InternetAddress.anyIPv4, port).then((server) {
+    print("Server started at $port");
+
+    server.listen((request) {
+      request.response
+        ..statusCode = 200
+        ..write("""{
+    "name": "Yatogami",
+    "uptime": ${DateTime.now().millisecondsSinceEpoch - bot.startTime.millisecondsSinceEpoch},
+}""") // Fake JSON response
+        ..close();
+    });
+  });
+}
+
 void main(List<String> arguments) async {
   var token = Platform.environment["DISCORD_TOKEN"];
   if (token == null) {
@@ -111,10 +129,11 @@ void main(List<String> arguments) async {
     ..registerCommand("av", _avatar);
 
   bot.onReady.first.then((_) {
-    print('Yatogami is ready!');
+    print('Setting presence...');
     bot.shardManager.onConnected.first.then((_) {
       bot.shardManager.setPresence(
           PresenceBuilder.of(activity: ActivityBuilder.game("with Shido")));
     });
+    startServer(bot);
   });
 }
