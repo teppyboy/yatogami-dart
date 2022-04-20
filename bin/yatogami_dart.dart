@@ -9,62 +9,67 @@ FutureOr<String?> prefixHandler(IMessage message) {
   return defaultPrefix;
 }
 
-List<Future<IUser>> getUsersFromMessage(ICommandContext context, String msg) {
-  final args = msg.split(" ");
-  args.removeAt(0); // Remove the command from args
+Future<List<IUser>> getUsersFromMessage(ICommandContext context) async {
+  final args = context.getArguments();
   if (args.isEmpty) {
-    return List<Future<IUser>>.unmodifiable(
-        [Future<IUser>.value(context.author as IUser)]);
+    return Future<List<IUser>>.value([(context.author as IUser)]);
   }
-  final users = List<Future<IUser>>.empty(growable: true);
+  final users = List<IUser>.empty(growable: true);
   for (final arg in args) {
     var userId = int.tryParse(arg);
     userId ??= int.tryParse(arg.substring(2, arg.length - 1));
     if (userId == null) {
       continue;
     }
-    users.add(context.client.fetchUser(Snowflake(userId)));
+    users.add(await context.client.fetchUser(Snowflake(userId)));
   }
-  return users;
+  return Future<List<IUser>>.value(users);
 }
 
-Future<IUser> getUserFromMessage(ICommandContext context, String msg) {
-  return getUsersFromMessage(context, msg).first;
-}
-
-// This code is so broken bro
-Future<IMember>? getMemberFromMessage(ICommandContext context, String msg) {
+List<Future<IMember>>? getMembersFromMessage(ICommandContext context) {
   final guild = context.guild;
   if (guild == null) {
     return null;
   }
-  final args = msg.split(" ");
-  print(args);
-  if (args.length < 2) {
-    return Future<IMember>.value(context.member);
+  final args = context.getArguments();
+  if (args.isEmpty) {
+    return List<Future<IMember>>.unmodifiable([context.member]);
   }
-  final userIdStr = args[1];
-  final userId = int.tryParse(userIdStr.substring(2, userIdStr.length - 1));
-  if (userId == null) {
-    return Future<IMember>.value(context.member);
-  } else {
-    return guild.fetchMember(Snowflake(userId));
+  final members = List<Future<IMember>>.empty(growable: true);
+  for (final arg in args) {
+    var userId = int.tryParse(arg);
+    userId ??= int.tryParse(arg.substring(2, arg.length - 1));
+    if (userId == null) {
+      continue;
+    }
+    members.add(guild.fetchMember(Snowflake(userId)));
   }
+  return members;
 }
 
 void _avatar(ICommandContext context, String message) async {
-  final users = context.message.mentions;
-  var user = await getUserFromMessage(context, message);
-  if (users.isNotEmpty) {
-    user = await users.first.getOrDownload();
+  final users = await getUsersFromMessage(context);
+  if (users.isEmpty) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description = "No user found matching your query."
+          ..color = DiscordColor.red),
+        mention: false,
+        reply: true);
+    return;
   }
+  final user = users.first;
   final embed = MessageBuilder.embed(EmbedBuilder()
     ..addAuthor((author) {
-      author.name = user.username + "'s avatar";
-      author.iconUrl = user.avatarURL(size: 4096);
+      author.name = user.tag + "'s avatar";
+      author.iconUrl = user.avatarURL(size: 128);
     })
     ..color = DiscordColor.magenta
-    ..imageUrl = user.avatarURL(size: 4096));
+    ..imageUrl = user.avatarURL(size: 4096)
+    ..addFooter((footer) {
+      footer.text = "UID: ${user.id}";
+    }));
   context.reply(embed, reply: true, mention: false);
 }
 
