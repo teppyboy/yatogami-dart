@@ -130,7 +130,7 @@ void main(List<String> arguments) async {
 
   bot.onReady.first.then((_) {
     print('Setting presence...');
-    bot.shardManager.onConnected.first.then((_) {
+    bot.shardManager.onConnected.forEach((element) {
       bot.shardManager.setPresence(
           PresenceBuilder.of(activity: ActivityBuilder.game("with Shido")));
     });
