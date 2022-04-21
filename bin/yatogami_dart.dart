@@ -2,6 +2,7 @@ import 'dart:io';
 import "dart:async";
 import 'package:nyxx/nyxx.dart';
 import 'package:nyxx_commander/nyxx_commander.dart';
+import 'package:nyxx_interactions/nyxx_interactions.dart';
 
 const defaultPrefix = "y!";
 
@@ -128,6 +129,12 @@ void main(List<String> arguments) async {
     // Aliases
     ..registerCommand("av", _avatar);
 
+  final interactions = IInteractions.create(WebsocketInteractionBackend(bot));
+  interactions
+    ..registerSlashCommandHandler("ping", (event) async {
+      await event.respond(MessageBuilder.content("Pong!"));
+    })
+    ..syncOnReady();
   bot.onReady.first.then((_) {
     print('Setting presence...');
     bot.shardManager.onConnected.forEach((element) {
