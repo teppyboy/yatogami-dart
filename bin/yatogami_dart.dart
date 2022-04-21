@@ -32,6 +32,19 @@ Future<List<IUser>> getUsersFromMessage(ICommandContext context) async {
   return Future<List<IUser>>.value(users);
 }
 
+Future<IRole?> getHighestRole(
+    Iterable<Cacheable<Snowflake, IRole>> roles) async {
+  IRole? highestRole;
+  for (final role in roles) {
+    print((await role.getOrDownload()).name);
+    highestRole ??= await role.getOrDownload();
+    if (highestRole.position < (await role.getOrDownload()).position) {
+      highestRole = await role.getOrDownload();
+    }
+  }
+  return highestRole;
+}
+
 Future<List<IMember>> getMembersFromMessage(ICommandContext context) async {
   final guild = context.guild;
   final members = List<IMember>.empty(growable: true);
@@ -56,6 +69,71 @@ Future<List<IMember>> getMembersFromMessage(ICommandContext context) async {
     }
   }
   return members;
+}
+
+void _clearMessages(ICommandContext context, String message) async {
+  final guild = context.guild;
+  final member = context.member;
+  if (guild == null || member == null) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description = "This command only works in servers."
+          ..color = DiscordColor.red),
+        reply: true);
+    return;
+  }
+  final senderRole = await getHighestRole(member.roles);
+  if (senderRole == null || !senderRole.permissions.manageMessages) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description = "You don't have permission to delete messages."
+          ..color = DiscordColor.red),
+        reply: true);
+    return;
+  }
+  final args = context.getArguments();
+  if (args.isEmpty || args.length > 1) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description = "Please specify how much messages to delete."
+          ..color = DiscordColor.red),
+        reply: true);
+    return;
+  }
+  final amount = int.tryParse(args.first);
+  if (amount == null || amount < 1) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description =
+              "The amount of messages to delete must be a positive number."
+          ..color = DiscordColor.red),
+        reply: true);
+    return;
+  }
+  final messages = context.nextMessages(amount);
+  if (await messages.isEmpty) {
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Error"
+          ..description = "No messages found."
+          ..color = DiscordColor.red),
+        reply: true);
+    return;
+  }
+  messages.listen((element) async {
+    print(element);
+    print(element.message.content);
+    final msgAuthor = await guild.fetchMember(element.message.author.id);
+    final msgRole = await getHighestRole(msgAuthor.roles);
+    if (msgRole != null && senderRole.position >= msgRole.position) {
+      print("Deleting");
+      element.message.delete();
+    }
+  });
 }
 
 void _avatar(ICommandContext context, String message) async {
@@ -126,6 +204,7 @@ void main(List<String> arguments) async {
   commands
     ..registerCommand("ping", _ping)
     ..registerCommand("avatar", _avatar)
+    ..registerCommand("clear", _clearMessages)
     // Aliases
     ..registerCommand("av", _avatar);
 
@@ -133,11 +212,7 @@ void main(List<String> arguments) async {
   final singleCommand = SlashCommandBuilder(
       "ping", "Simple command that responds with `pong`", [])
     ..registerHandler((event) async {
-      // Handler accepts a function with parameter of SlashCommandInteraction which contains
-      // all of the stuff needed to respond to interaction.
-      // From there you have two routes: ack and then respond later or respond immediately without ack.
-      // Sending ack will display indicator that bot is thinking and from there you will have 15 mins to respond to
-      // that interaction.
+      await event.acknowledge();
       await event.respond(MessageBuilder.content("Pong!"));
     });
   interactions
