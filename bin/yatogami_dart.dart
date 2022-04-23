@@ -3,6 +3,7 @@ import "dart:async";
 import 'package:nyxx/nyxx.dart';
 import 'package:nyxx_commander/nyxx_commander.dart';
 import 'package:nyxx_interactions/nyxx_interactions.dart';
+import 'package:http/http.dart' as http;
 
 const defaultPrefix = "y!";
 
@@ -36,13 +37,25 @@ Future<IRole?> getHighestRole(
     Iterable<Cacheable<Snowflake, IRole>> roles) async {
   IRole? highestRole;
   for (final role in roles) {
-    print((await role.getOrDownload()).name);
     highestRole ??= await role.getOrDownload();
     if (highestRole.position < (await role.getOrDownload()).position) {
       highestRole = await role.getOrDownload();
     }
   }
   return highestRole;
+}
+
+Future<String> getAvatar(IUser user, {int size = 4096}) async {
+  var nitro = user.nitroType;
+  // Prevent having to send additional request to Discord.
+  if (nitro == null || nitro == NitroType.none) {
+    return user.avatarURL(size: size);
+  }
+  var avatar = user.avatarURL(format: "gif", size: size);
+  if ((await http.get(Uri.parse(avatar))).statusCode != 200) {
+    avatar = user.avatarURL(size: size);
+  }
+  return avatar;
 }
 
 Future<List<IMember>> getMembersFromMessage(ICommandContext context) async {
@@ -71,14 +84,14 @@ Future<List<IMember>> getMembersFromMessage(ICommandContext context) async {
   return members;
 }
 
-void _clearMessages(ICommandContext context, String message) async {
+void _clear(ICommandContext context, String message) async {
   final guild = context.guild;
   final member = context.member;
   if (guild == null || member == null) {
     context.reply(
         MessageBuilder.embed(EmbedBuilder()
           ..title = "Error"
-          ..description = "This command only works in servers."
+          ..description = "This command does not work in DMs/Groups."
           ..color = DiscordColor.red),
         reply: true);
     return;
@@ -114,26 +127,25 @@ void _clearMessages(ICommandContext context, String message) async {
         reply: true);
     return;
   }
-  final messages = context.nextMessages(amount);
-  if (await messages.isEmpty) {
+  final messages = context.channel
+      .downloadMessages(limit: amount, before: context.message.id);
+  try {
+    context.channel.bulkRemoveMessages(await messages.toList());
+    context.reply(
+        MessageBuilder.embed(EmbedBuilder()
+          ..title = "Success"
+          ..description = "Deleted ${messages.length} messages."
+          ..color = DiscordColor.green),
+        reply: true);
+  } catch (e) {
+    print(e);
     context.reply(
         MessageBuilder.embed(EmbedBuilder()
           ..title = "Error"
-          ..description = "No messages found."
+          ..description = "Failed to delete ${messages.length} messages."
           ..color = DiscordColor.red),
         reply: true);
-    return;
   }
-  messages.listen((element) async {
-    print(element);
-    print(element.message.content);
-    final msgAuthor = await guild.fetchMember(element.message.author.id);
-    final msgRole = await getHighestRole(msgAuthor.roles);
-    if (msgRole != null && senderRole.position >= msgRole.position) {
-      print("Deleting");
-      element.message.delete();
-    }
-  });
 }
 
 void _avatar(ICommandContext context, String message) async {
@@ -150,12 +162,12 @@ void _avatar(ICommandContext context, String message) async {
   }
   final user = users.first;
   final embed = MessageBuilder.embed(EmbedBuilder()
-    ..addAuthor((author) {
+    ..addAuthor((author) async {
       author.name = user.tag + "'s avatar";
-      author.iconUrl = user.avatarURL(size: 128);
+      author.iconUrl = await getAvatar(user, size: 128);
     })
     ..color = DiscordColor.magenta
-    ..imageUrl = user.avatarURL(size: 4096)
+    ..imageUrl = await getAvatar(user, size: 4096)
     ..addFooter((footer) {
       footer.text = "UID: ${user.id}";
     }));
@@ -163,7 +175,13 @@ void _avatar(ICommandContext context, String message) async {
 }
 
 void _ping(ICommandContext context, String message) {
-  context.reply(MessageBuilder.content("Pong!"), reply: true, mention: false);
+  context.reply(
+      MessageBuilder.embed(EmbedBuilder()
+        ..title = "Pong!"
+        ..description =
+            "[Markdown test](https://www.youtube.com/watch?v=dQw4w9WgXcQ)"),
+      reply: true,
+      mention: false);
 }
 
 Future<void> startServer(INyxxWebsocket bot) async {
@@ -204,7 +222,7 @@ void main(List<String> arguments) async {
   commands
     ..registerCommand("ping", _ping)
     ..registerCommand("avatar", _avatar)
-    ..registerCommand("clear", _clearMessages)
+    ..registerCommand("clear", _clear)
     // Aliases
     ..registerCommand("av", _avatar);
 
